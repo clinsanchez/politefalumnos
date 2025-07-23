@@ -1,36 +1,38 @@
 <?php
 session_start();
-require('fpdf.php');
+require('fpdf.php'); // Asegúrate que la ruta a fpdf.php sea correcta
 
-// Validación de sesión
+// Validación de sesión para generar el PDF
 if (!isset($_SESSION['student']) || !isset($_SESSION['grade_table']) || !isset($_SESSION['student_info'])) {
-    die("Datos insuficientes para generar la boleta.");
+    die("No se pudo generar la boleta. La información no está disponible. Por favor, regresa a la página de calificaciones e inténtalo de nuevo.");
 }
 
-$student = $_SESSION['student'];
+// Obtener datos de la sesión
+$student_name = $_SESSION['student']['name'] ?? 'Desconocido';
 $grades = $_SESSION['grade_table'];
 $info = $_SESSION['student_info'];
 
-$nombre = $student['name'] ?? 'Desconocido';
 $matricula = $info['matricula'] ?? 'Desconocida';
 $grupo = $info['grupo'] ?? 'N/A';
 $seccion = $info['seccion'] ?? 'N/A';
 $ciclo = $info['ciclo'] ?? 'N/A';
 
-// Ordenar columnas
+// Ordenar las columnas de los parciales
 $parciales = [];
-foreach ($grades as $materia => $datos) {
-    foreach ($datos as $parcial => $cal) {
-        $parciales[$parcial] = true;
+if (!empty($grades)) {
+    foreach ($grades as $materia => $datos) {
+        foreach ($datos as $parcial => $cal) {
+            $parciales[$parcial] = true;
+        }
     }
+    $parciales = array_keys($parciales);
+    usort($parciales, function ($a, $b) {
+        $orden = ['Parcial 1' => 1, 'Parcial 2' => 2, 'Parcial 3' => 3, 'Calificación Final' => 4];
+        return ($orden[$a] ?? 99) - ($orden[$b] ?? 99);
+    });
 }
-$parciales = array_keys($parciales);
-usort($parciales, function ($a, $b) {
-    $orden = ['Parcial 1' => 1, 'Parcial 2' => 2, 'Parcial 3' => 3, 'Calificación Final' => 4];
-    return ($orden[$a] ?? 99) - ($orden[$b] ?? 99);
-});
 
-// PDF
+// Clase PDF personalizada para cabecera y pie de página
 class PDF extends FPDF
 {
     function Header()
@@ -45,7 +47,7 @@ class PDF extends FPDF
     {
         $this->SetY(-20);
         $this->SetFont('Arial', 'I', 8);
-        $this->MultiCell(0, 5, utf8_decode("Este documento es solo de carácter informativo. No tiene validez oficial.\nInstituto Politécnico de la Frontera - https://politefalumnos.com"), 0, 'C');
+        $this->MultiCell(0, 5, utf8_decode("Este documento es solo de carácter informativo y no tiene validez oficial.\nInstituto Politécnico de la Frontera - https://politefalumnos.com"), 0, 'C');
     }
 }
 
@@ -53,8 +55,8 @@ $pdf = new PDF('L', 'mm', 'A4');
 $pdf->AddPage();
 $pdf->SetFont('Arial', '', 12);
 
-// Datos del alumno
-$pdf->Cell(0, 10, utf8_decode("Nombre del Alumno: ") . utf8_decode($nombre), 0, 1);
+// Info del alumno
+$pdf->Cell(0, 10, utf8_decode("Nombre del Alumno: ") . utf8_decode($student_name), 0, 1);
 $pdf->Cell(0, 10, utf8_decode("Matrícula: $matricula"), 0, 1);
 $pdf->Cell(0, 10, utf8_decode("Grupo: $grupo    Sección: $seccion    Ciclo Escolar: $ciclo"), 0, 1);
 $pdf->Ln(5);
@@ -68,27 +70,35 @@ foreach ($parciales as $parcial) {
 }
 $pdf->Ln();
 
-// Contenido
-$pdf->SetFont('Arial', '', 11);
+// --- SECCIÓN CORREGIDA ---
+// Contenido de la tabla
+$pdf->SetFont('Arial', '', 10); // Un tamaño de fuente ligeramente menor para el contenido
 foreach ($grades as $materia => $calificaciones) {
-    $yStart = $pdf->GetY();
-    $xStart = $pdf->GetX();
-    
-    // Altura estimada de la celda de materia
-    $pdf->MultiCell(110, 8, utf8_decode($materia), 1);
-    $yEnd = $pdf->GetY();
-    $altura = $yEnd - $yStart;
+    // Guardar la posición Y inicial de la fila
+    $y_inicial = $pdf->GetY();
+    $x_inicial = $pdf->GetX();
 
-    // Regresar al inicio de la fila para imprimir calificaciones
-    $pdf->SetXY($xStart + 110, $yStart);
+    // Dibujar la celda de la materia (MultiCell) para que el texto se divida en varias líneas si es necesario
+    $pdf->MultiCell(110, 8, utf8_decode($materia), 1, 'L');
 
+    // Calcular la altura que ocupó la celda de la materia
+    $altura_fila = $pdf->GetY() - $y_inicial;
+
+    // Reposicionar el cursor para dibujar las celdas de las calificaciones
+    $pdf->SetXY($x_inicial + 110, $y_inicial);
+
+    // Dibujar las celdas de las calificaciones con la altura calculada
     foreach ($parciales as $parcial) {
         $nota = $calificaciones[$parcial] ?? '-';
-        $pdf->Cell(40, $altura, is_numeric($nota) ? number_format($nota, 1) : utf8_decode($nota), 1, 0, 'C');
+        // El último parámetro de Cell es la altura de la celda
+        $pdf->Cell(40, $altura_fila, is_numeric($nota) ? number_format($nota, 1) : utf8_decode($nota), 1, 0, 'C');
     }
-    $pdf->Ln($altura);
+    
+    // Mover el cursor a la siguiente línea. MultiCell ya movió el cursor Y, por lo que un Ln() simple es suficiente.
+    $pdf->Ln($altura_fila);
 }
+// --- FIN DE SECCIÓN CORREGIDA ---
 
-ob_clean(); // evitar errores por espacios o echo previos
+ob_clean(); // Evitar errores por contenido previo
 $pdf->Output('I', 'boleta_calificaciones.pdf');
 exit;
