@@ -213,7 +213,6 @@ try {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Segoe+UI:wght@400;600&display=swap" rel="stylesheet">
-    <!-- Mantener estilos.css si tienes estilos globales -->
     <link rel="stylesheet" href="estilos.css">
     <style>
         /* ESTILOS PROFESIONALES MEJORADOS */
@@ -286,6 +285,30 @@ try {
         .last-update .bi {
             color: #00796b; /* Icono con color temático */
         }
+
+        /* --- INICIO: CÓDIGO CSS AÑADIDO --- */
+        .clabe-info-box {
+            background-color: #f0f7ff;
+            border-left: 5px solid #005a9c;
+            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .clabe-info-box p {
+            margin: 0;
+            font-size: 1rem;
+            color: #333;
+        }
+        .clabe-info-box .clabe-number {
+            font-weight: 600;
+            font-size: 1.2rem;
+            color: #003366;
+            margin-top: 5px;
+            display: block;
+            font-family: monospace;
+        }
+        /* --- FIN: CÓDIGO CSS AÑADIDO --- */
 
         /* Estilos para la tabla */
         .table {
@@ -459,15 +482,18 @@ try {
     </div>
 </nav>
 
-<!-- Estructura HTML original del usuario para el contenido principal -->
 <div class="container">
     <div class="row justify-content-center">
-        <!-- Ajustar la clase de columna para hacer la tarjeta más angosta -->
         <div class="col-lg-9 col-xl-8 card-container">
             <h2 class="text-center mb-3">Pagos pendientes de <?= htmlspecialchars($student_name) ?></h2>
             <p class="last-update">
                 <i class="bi bi-clock-history"></i> Última actualización: <strong><?= htmlspecialchars($ultima_actualizacion) ?></strong>
             </p>
+
+            <div class="clabe-info-box">
+                <p>Cuenta a nombre de: POLITECNICO DE LA FRONTERA</p>
+                <span class="clabe-number">CLABE: 002164460100681188</span>
+            </div>
             <?php
             $hay_pagos = false;
             // Verificar si $_SESSION['fees_data'] existe y es un array antes de iterar
@@ -475,7 +501,7 @@ try {
                 foreach ($_SESSION['fees_data'] as $row):
                     if (!$hay_pagos) {
                         // Se usa la clase .table-dark para el thead como en tu código original
-                        echo '<div class="table-responsive"><table class="table table-hover table-bordered"><thead class="table-dark"><tr><th>Fecha</th><th>Concepto</th><th>Importe</th><th>Referencia</th></tr></thead><tbody>';
+                        echo '<div class="table-responsive"><table class="table table-hover table-bordered"><thead class="table-dark"><tr><th>Fecha Limite</th><th>Pagos a Cubrir</th><th>Importe</th><th>Concepto de Pago</th></tr></thead><tbody>';
                         $hay_pagos = true;
                     }
             ?>
@@ -496,8 +522,7 @@ try {
                 echo "<div class='alert alert-info text-center mt-3 shadow-sm' role='alert'><i class='bi bi-info-circle-fill me-2'></i>No hay pagos pendientes registrados en este momento.</div>";
             }
             ?>
-            <div class="actions-toolbar"> <!-- Reemplaza d-flex justify-content-between mt-4 -->
-                <a href="dashboard.php" class="btn btn-outline-secondary">
+            <div class="actions-toolbar"> <a href="dashboard.php" class="btn btn-outline-secondary">
                     <i class="bi bi-arrow-left-circle-fill"></i> Regresar al Dashboard
                 </a>
                 <?php if ($hay_pagos): // Mostrar botón de descarga solo si hay pagos ?>

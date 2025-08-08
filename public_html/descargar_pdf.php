@@ -56,10 +56,10 @@ $pdf->Ln(2);
 
 $pdf->SetFont('Arial', 'B', 10);
 $pdf->SetX($margen_x);
-$pdf->Cell(50, 8, 'Fecha Límite', 1);
-$pdf->Cell(100, 8, 'Concepto o Motivo', 1);
-$pdf->Cell(60, 8, 'Referencia', 1);
-$pdf->Cell(30, 8, 'Importe', 1);
+$pdf->Cell(50, 8, 'FECHA LIMITE', 1);
+$pdf->Cell(100, 8, 'PAGOS A CUBRIR', 1);
+$pdf->Cell(60, 8, 'CONCEPTO DE PAGO', 1);
+$pdf->Cell(30, 8, 'IMPORTE', 1);
 $pdf->Ln();
 
 $pdf->SetFont('Arial', '', 10);

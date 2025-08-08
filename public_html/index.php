@@ -1,9 +1,12 @@
 <?php
 session_start();
+// Carga la configuración de la base de datos y las constantes
+require_once 'config.php'; 
+// Carga el cliente para la conexión a Odoo
 require_once 'odoo_client.php';
 
-// Redirigir si ya está logueado
-if (isset($_SESSION['student'])) {
+// Redirigir si ya existe una sesión de cualquier tipo de usuario
+if (isset($_SESSION['user_role'])) {
     header("Location: dashboard.php");
     exit();
 }
@@ -11,29 +14,60 @@ if (isset($_SESSION['student'])) {
 $error = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $form_user = $_POST['username'];
-    $form_pass = $_POST['password'];
+    $form_user = $_POST['username']; // Puede ser email de admin o matrícula de alumno
+    $form_pass = $_POST['password']; // Puede ser contraseña de admin o CURP de alumno
 
     try {
+        // --- PASO 1: Intentar autenticar como Administrador desde la base de datos local ---
+        $pdo = new PDO($dsn, DB_USERNAME, DB_PASSWORD, $options);
+        $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE email = ?");
+        $stmt->execute([$form_user]);
+        $admin_user = $stmt->fetch();
+
+        // Verificar si se encontró un usuario y si la contraseña cifrada coincide
+        if ($admin_user && password_verify($form_pass, $admin_user['password'])) {
+            // ¡Éxito! El usuario es un administrador.
+            session_regenerate_id(true); // Previene la fijación de sesiones
+            $_SESSION['user_id'] = $admin_user['id'];
+            $_SESSION['user_name'] = $admin_user['nombre'];
+            $_SESSION['user_role'] = 'admin';
+            header("Location: dashboard.php");
+            exit();
+        }
+
+        // --- PASO 2: Si no es admin, intentar autenticar como Alumno desde Odoo ---
         $odoo = new OdooClient();
         $students = $odoo->search_read('op.student', [['gr_no', '=', $form_user]], ['fields' => ['id', 'name', 'curp']]);
 
         if (!empty($students)) {
             $student = $students[0];
-            // Comparación insensible a mayúsculas/minúsculas y espacios
-            if (strtolower(trim($student['curp'])) == strtolower(trim($form_pass))) {
+            // Se verifica que el campo 'curp' exista y no sea falso antes de comparar
+            if (isset($student['curp']) && $student['curp'] && strtolower(trim($student['curp'])) == strtolower(trim($form_pass))) {
+                // ¡Éxito! El usuario es un alumno.
+                session_regenerate_id(true);
                 $_SESSION['student'] = [
                     'id' => $student['id'],
                     'name' => $student['name']
                 ];
+                $_SESSION['user_name'] = $student['name'];
+                $_SESSION['user_role'] = 'student';
                 header("Location: dashboard.php");
                 exit();
             }
         }
 
+        // --- PASO 3: Si ninguna de las autenticaciones anteriores tuvo éxito ---
         $error = "Credenciales inválidas.";
+
+    } catch (PDOException $e) {
+        // Captura errores de conexión con la base de datos local
+        $error = "Error de conexión con el servidor. Por favor, intente más tarde.";
+        // Para depuración, puedes registrar el error real en un archivo de log en el servidor
+        // error_log("Error de PDO: " . $e->getMessage());
     } catch (Exception $e) {
-        $error = "Error de conexión con Odoo: " . $e->getMessage(); // Es bueno mostrar el mensaje de error para depuración si es seguro hacerlo.
+        // Captura errores de conexión con Odoo
+        $error = "Error de conexión con Odoo. Por favor, intente más tarde.";
+        // error_log("Error de Odoo: " . $e->getMessage());
     }
 }
 ?>
@@ -81,12 +115,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         /* Superposición de gradiente opcional sobre la imagen de fondo */
-        /* Ayuda a mejorar el contraste del texto y la caja de login */
         .bg-container::before {
             content: '';
             position: absolute;
             top: 0; left: 0; right: 0; bottom: 0;
-            /* Ajusta los colores del gradiente y la opacidad según tus preferencias */
             background: linear-gradient(45deg, rgba(0, 50, 100, 0.6), rgba(0, 123, 255, 0.4));
             z-index: 1; /* Encima de la imagen, debajo del contenido */
         }
@@ -118,7 +150,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         /* Estilos para el logo */
         .logo {
-            /* Asegúrate que Imagenes/logoPolitef.png esté en la ruta correcta */
             width: 110px; 
             margin-bottom: 20px; /* Espacio debajo del logo */
             border-radius: 8px; /* Redondeo si el logo es cuadrado/rectangular */
@@ -193,7 +224,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         /* Pie de página simple */
         .footer {
-            position: absolute; /* O fixed si quieres que siempre esté visible al hacer scroll (no aplica en esta página) */
+            position: absolute;
             bottom: 15px;
             left: 0;
             width: 100%;
@@ -229,11 +260,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             <form method="post" action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>">
                 <div class="input-wrapper">
                     <i class="fas fa-user form-icon"></i>
-                    <input type="text" name="username" class="form-control" placeholder="Usuario (Matrícula/ GR_No)" required aria-label="Nombre de usuario">
+                    <input type="text" name="username" class="form-control" placeholder="Email o Matrícula" required aria-label="Email o Matrícula">
                 </div>
                 <div class="input-wrapper">
                      <i class="fas fa-lock form-icon"></i>
-                    <input type="password" name="password" class="form-control" placeholder="Contraseña (CURP)" required aria-label="Contraseña">
+                    <input type="password" name="password" class="form-control" placeholder="Contraseña o CURP" required aria-label="Contraseña o CURP">
                 </div>
                 
                 <button type="submit" class="btn btn-primary mt-3">Ingresar</button>
@@ -250,7 +281,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         &copy; <?php echo date("Y"); ?> <a href="https://politefalumnos.com" target="_blank">Politef Alumnos</a>. Todos los derechos reservados.
     </div>
 
-    <!-- Scripts de Bootstrap (opcional si ya los cargas globalmente) -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

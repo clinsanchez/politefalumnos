@@ -14,37 +14,68 @@ $student_name = $student['name'];
 
 $odoo = new OdooClient();
 
-// Obtener información del estudiante y su estado
+// --- OBTENER INFORMACIÓN DEL ESTUDIANTE (VERSIÓN A PRUEBA DE ERRORES) ---
 $student_info_full = $odoo->search_read('op.student', [['id', '=', $student_id]], ['fields' => ['gr_no', 'state']]);
-$estado = $student_info_full[0]['state'] ?? '';
+
+if (empty($student_info_full)) {
+    die("Error crítico: No se pudo encontrar la información del estudiante. Por favor, cierre sesión y vuelva a intentarlo.");
+}
+$student_data = $student_info_full[0];
+$estado = $student_data['state'] ?? '';
+$matricula = $student_data['gr_no'] ?? 'Desconocido';
 
 // Si el estudiante está dado de baja, mostrar mensaje y salir
 if (in_array(strtolower($estado), ['baja temporal', 'baja definitiva'])) {
+    echo '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Acceso Restringido</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"></head><body>';
     echo '<div class="container mt-5"><div class="alert alert-warning text-center p-4 shadow-lg" role="alert"><h4 class="alert-heading">Acceso restringido</h4><p>Actualmente tu estado es <strong>' . htmlspecialchars($estado) . '</strong>. Para visualizar tus calificaciones, es necesario regularizar tu situación académica y financiera.</p><hr><a href="dashboard.php" class="btn btn-warning">Regresar</a></div></div>';
+    echo '</body></html>';
     exit();
 }
 
-// Obtener información de admisión
-$admission_info = $odoo->search_read('op.admission', [['student_id', '=', $student_id]], ['fields' => ['batch_id', 'course_id']]);
-$matricula = $student_info_full[0]['gr_no'] ?? 'Desconocido';
-$grupo = $admission_info[0]['batch_id'][1] ?? 'N/A';
-$seccion = 'N/A'; // Este campo no parece estar disponible en la consulta
-$ciclo = $admission_info[0]['course_id'][1] ?? 'N/A';
-
-
-// Obtener y procesar calificaciones
+// --- LÓGICA PARA OBTENER CALIFICACIONES Y DATOS DE ADMISIÓN (MÉTODO DEFINITIVO) ---
 $grades_data_raw = $odoo->search_read('op.student.grades', [['student_id', '=', $student_id]], ['fields' => ['grade', 'evaluation_to_faculties_id']]);
 
 $grade_table = [];
-if (is_array($grades_data_raw)) {
+$evals_data_map = [];
+$admission_details = 'No disponible'; // Valor por defecto
+
+if (is_array($grades_data_raw) && !empty($grades_data_raw)) {
+    $eval_ids = [];
+    foreach ($grades_data_raw as $grade) {
+        if (isset($grade['evaluation_to_faculties_id'][0])) {
+            $eval_ids[] = $grade['evaluation_to_faculties_id'][0];
+        }
+    }
+    
+    if (!empty($eval_ids)) {
+        // --- SECCIÓN MODIFICADA: AHORA PEDIMOS 'admission_register_id' ---
+        $evals_raw = $odoo->read(
+            'op.evaluation.to.faculties', 
+            array_unique($eval_ids), 
+            ['subject_id', 'evaluation_schedule_id', 'admission_register_id'] // Campo clave añadido
+        );
+
+        $admission_found = false;
+        foreach ($evals_raw as $eval) {
+            $evals_data_map[$eval['id']] = $eval;
+            
+            // Intentar obtener el nombre de la admisión de la primera evaluación que lo tenga
+            if (!$admission_found && isset($eval['admission_register_id'][1]) && !empty($eval['admission_register_id'][1])) {
+                $admission_details = $eval['admission_register_id'][1];
+                $admission_found = true; // Lo encontramos, no necesitamos buscar más
+            }
+        }
+    }
+
+    // Procesar las calificaciones (sin cambios aquí)
     foreach ($grades_data_raw as $grade) {
         if (isset($grade['evaluation_to_faculties_id'][0])) {
             $eval_id = $grade['evaluation_to_faculties_id'][0];
-            $eval = $odoo->read('op.evaluation.to.faculties', [$eval_id], ['subject_id', 'evaluation_schedule_id']);
-
-            if (!empty($eval)) {
-                $subject = $eval[0]['subject_id'][1] ?? 'Materia Desconocida';
-                $schedule = $eval[0]['evaluation_schedule_id'][1] ?? 'Parcial Desconocido';
+            
+            if (isset($evals_data_map[$eval_id])) {
+                $eval_details = $evals_data_map[$eval_id];
+                $subject = $eval_details['subject_id'][1] ?? 'Materia Desconocida';
+                $schedule = $eval_details['evaluation_schedule_id'][1] ?? 'Parcial Desconocido';
                 $raw_parcial = strtoupper(trim(explode("/", $schedule)[0]));
 
                 $parcial = match (true) {
@@ -54,7 +85,7 @@ if (is_array($grades_data_raw)) {
                     str_contains($raw_parcial, 'PARCIAL 3') => 'Parcial 3',
                     default => $raw_parcial,
                 };
-                
+
                 if (!empty($subject) && $parcial !== 'PARCIAL DESCONOCIDO') {
                     $grade_table[$subject][$parcial] = $grade['grade'];
                 }
@@ -64,13 +95,11 @@ if (is_array($grades_data_raw)) {
 }
 
 
-// Guardar datos en la sesión para el PDF
+// --- GUARDAR DATOS ACTUALIZADOS EN LA SESIÓN PARA EL PDF ---
 $_SESSION['student_info'] = [
-    'name'      => $student_name,
-    'matricula' => $matricula,
-    'grupo'     => $grupo,
-    'seccion'   => $seccion,
-    'ciclo'     => $ciclo,
+    'name'              => $student_name,
+    'matricula'         => $matricula,
+    'admission_details' => $admission_details, // El dato correcto ahora estará aquí
 ];
 $_SESSION['grade_table'] = $grade_table;
 
